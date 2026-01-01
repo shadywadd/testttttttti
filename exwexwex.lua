@@ -1,0 +1,211 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+local Workspace = game:GetService("Workspace")
+
+local localPlayer = Players.localPlayer
+
+local hosts = {}
+
+
+function isHost(name)
+    for _, host in ipairs(hosts) do
+        if host == name then
+            return true
+        end
+    end
+    return false
+end
+function removeHost(name)
+    for i, host in ipairs(hosts) do
+        if host == name then
+            table.remove(hosts, i)
+            return true
+        end
+    end
+    return false
+end
+
+function addHost(name)
+    table.insert(hosts, name)
+end
+
+local function createWhitelistTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "HostWhitelist"
+    tool.RequiresHandle = false
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "roaxe"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+    screenGui.Enabled = false
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 350)
+    frame.Position = UDim2.new(0, 20, 0.5, -175)
+    frame.BackgroundTransparency = 0.2
+    frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    frame.Parent = screenGui
+    local topBar = Instance.new("Frame")
+    topBar.Size = UDim2.new(1, -10, 0, 40)
+    topBar.Position = UDim2.new(0, 5, 0, 5)
+    topBar.BackgroundTransparency = 1
+    topBar.Parent = frame
+
+    local uiLayout = Instance.new("UIListLayout")
+    uiLayout.FillDirection = Enum.FillDirection.Horizontal
+    uiLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    uiLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    uiLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    uiLayout.Parent = topBar
+    --[[
+    local minusBtn = Instance.new("TextButton")
+    minusBtn.Text = "-"
+    minusBtn.Font = Enum.Font.SourceSansBold
+    minusBtn.TextSize = 28
+    minusBtn.Size = UDim2.new(0, 40, 0, 30)
+    minusBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    minusBtn.TextColor3 = Color3.new(1, 1, 1)
+    minusBtn.Parent = topBar
+=
+    local stompCountBox = Instance.new("TextBox")
+    stompCountBox.Text = tostring(stompCount)
+    stompCountBox.Font = Enum.Font.SourceSans
+    stompCountBox.TextSize = 24
+    stompCountBox.Size = UDim2.new(0, 80, 0, 30)
+    stompCountBox.ClearTextOnFocus = false
+    stompCountBox.TextColor3 = Color3.new(1, 1, 1)
+    stompCountBox.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    stompCountBox.Parent = topBar
+    stompCountBox.TextScaled = true
+    stompCountBox.TextWrapped = true
+
+    local plusBtn = Instance.new("TextButton")
+    plusBtn.Text = "+"
+    plusBtn.Font = Enum.Font.SourceSansBold
+    plusBtn.TextSize = 28
+    plusBtn.Size = UDim2.new(0, 40, 0, 30)
+    plusBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    plusBtn.TextColor3 = Color3.new(1, 1, 1)
+    plusBtn.Parent = topBar
+        --]]
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -10, 1, -55)
+    scroll.Position = UDim2.new(0, 5, 0, 45)
+    scroll.CanvasSize = UDim2.new(0, 0, 2, 0)
+    scroll.ScrollBarThickness = 6
+    scroll.BackgroundTransparency = 1
+    scroll.Parent = frame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Parent = scroll
+
+    refreshList = function()
+        for _, child in pairs(scroll:GetChildren()) do
+            if child:IsA("TextButton") or child:IsA("Frame") then
+                child:Destroy()
+            end
+        end
+        globalupdate = function()
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= localPlayer then
+                    local button = Instance.new("TextButton")
+                    button.Size = UDim2.new(1, -10, 0, 40)
+                    button.BackgroundColor3 = isHost(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                    button.TextColor3 = Color3.new(1, 1, 1)
+                    button.AutoButtonColor = false
+                    button.Parent = scroll
+                    button.Text = ""
+
+                    local avatar = Instance.new("ImageLabel")
+                    avatar.Size = UDim2.new(0, 36, 0, 36)
+                    avatar.Position = UDim2.new(0, 5, 0, 2)
+                    avatar.BackgroundTransparency = 1
+                    avatar.Parent = button
+                    local success, thumbnail = pcall(function()
+                        return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+                    end)
+                    if success and thumbnail then
+                        avatar.Image = thumbnail
+                    else
+                        avatar.Image = ""
+                    end
+
+                    local label = Instance.new("TextLabel")
+                    label.Size = UDim2.new(1, -50, 1, 0)
+                    label.Position = UDim2.new(0, 46, 0, 0)
+                    label.BackgroundTransparency = 1
+                    label.TextColor3 = Color3.new(1,1,1)
+                    label.TextXAlignment = Enum.TextXAlignment.Left
+                    label.Font = Enum.Font.SourceSansBold
+                    label.TextSize = 18
+                    label.Text = string.format("%s (%s)", player.DisplayName, player.Name)
+                    label.Parent = button
+
+                    button.MouseButton1Click:Connect(function()
+                        if isHost(player.Name) then
+                            removeHost(player.Name)
+                            button.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+                        else
+                            addHost(player.Name)
+                            button.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                        end
+                    end)
+                end
+            end
+        end
+    end
+
+    refreshList()
+
+    Players.PlayerAdded:Connect(refreshList)
+    Players.PlayerRemoving:Connect(refreshList)
+
+    tool.Equipped:Connect(function()
+        screenGui.Enabled = true
+        notify("bot", "whitelist a player by making them green with the tool", 5)
+        notify("bot", "increase/decrease the amount of stomps per frame. higher = louder but can also spike your ping if you stay over them for too long", 7)
+    end)
+
+    tool.Unequipped:Connect(function()
+        screenGui.Enabled = false
+    end)
+    --[[
+    minusBtn.MouseButton1Click:Connect(function()
+        local newVal = tonumber(stompCountBox.Text) or stompCount
+        newVal = math.max(1, newVal - 1)
+        stompCount = newVal
+        stompCountBox.Text = tostring(stompCount)
+    end)
+
+    plusBtn.MouseButton1Click:Connect(function()
+        local newVal = tonumber(stompCountBox.Text) or stompCount
+        newVal = math.min(100, newVal + 1)
+        stompCount = newVal
+        stompCountBox.Text = tostring(stompCount)
+    end)
+
+    stompCountBox.FocusLost:Connect(function(enterPressed)
+        local val = tonumber(stompCountBox.Text)
+        if val == nil or val < 1 then
+            stompCountBox.Text = tostring(stompCount)
+        else
+            stompCount = math.clamp(math.floor(val), 1, 100)
+            stompCountBox.Text = tostring(stompCount)
+        end
+    end)
+    --]]
+
+    tool.Parent = localPlayer:WaitForChild("Backpack")
+end
+
+localPlayer.CharacterAdded:Connect(function()
+    task.wait(2)
+    createWhitelistTool()
+end)
+
+createWhitelistTool()
