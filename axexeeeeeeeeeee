@@ -1,0 +1,289 @@
+-- SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+local Workspace = game:GetService("Workspace")
+
+-- LOCAL VARS
+local localPlayer = Players.LocalPlayer
+local args = { "Stomp" }
+
+local toggled = false
+local connection = nil
+local whitelist = {}
+
+local stompCount = 10  -- Default stomp count, adjustable by GUI
+
+-- Notify popup
+local function notify(text, time)
+    StarterGui:SetCore("SendNotification", {
+        Title = "Stomp Toggle",
+        Text = text,
+        Duration = time,
+    })
+end
+
+-- Check ancestry for whitelisted player (no changes)
+local function isWhitelisted(descendant)
+    for _, playerName in pairs(whitelist) do
+        local ancestor = descendant
+        while ancestor and ancestor ~= Workspace do
+            if ancestor.Name == playerName then
+                return true
+            end
+            ancestor = ancestor.Parent
+        end
+    end
+    return false
+end
+
+-- Check if standing above a valid (non-whitelisted) player (no changes)
+local function isAboveAnotherPlayer()
+    local character = localPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return false end
+
+    local hrp = character.HumanoidRootPart
+    local rayOrigin = hrp.Position
+    local rayDirection = Vector3.new(0, -5, 0)
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local result = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    if result and result.Instance then
+        local firstParent = result.Instance:FindFirstAncestorOfClass("Model")
+        local secondParent = firstParent and firstParent.Parent
+
+        for playerName, isWhitelisted in pairs(whitelist) do
+            if isWhitelisted then
+                -- Check both ancestor levels for whitelist
+                if (firstParent and firstParent.Name == playerName) or
+                   (secondParent and secondParent:IsA("Model") and secondParent.Name == playerName) then
+                    return false -- Under a whitelisted player, don't stomp
+                end
+            end
+        end
+
+        -- If it's any player at all (and not whitelisted), allow stomping
+        if firstParent and Players:GetPlayerFromCharacter(firstParent) then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Create GUI Tool with display names, avatars, and adjustable stomp count
+local function createWhitelistTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "StompWhitelist"
+    tool.RequiresHandle = false
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "StompGui"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+    screenGui.Enabled = false  -- <-- GUI hidden on creation
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 350)
+    frame.Position = UDim2.new(0, 20, 0.5, -175)
+    frame.BackgroundTransparency = 0.2
+    frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    frame.Parent = screenGui
+
+    -- Top control bar with "-" button, textbox, and "+" button
+    local topBar = Instance.new("Frame")
+    topBar.Size = UDim2.new(1, -10, 0, 40)
+    topBar.Position = UDim2.new(0, 5, 0, 5)
+    topBar.BackgroundTransparency = 1
+    topBar.Parent = frame
+
+    local uiLayout = Instance.new("UIListLayout")
+    uiLayout.FillDirection = Enum.FillDirection.Horizontal
+    uiLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    uiLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    uiLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    uiLayout.Parent = topBar
+
+    local minusBtn = Instance.new("TextButton")
+    minusBtn.Text = "-"
+    minusBtn.Font = Enum.Font.SourceSansBold
+    minusBtn.TextSize = 28
+    minusBtn.Size = UDim2.new(0, 40, 0, 30)
+    minusBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    minusBtn.TextColor3 = Color3.new(1, 1, 1)
+    minusBtn.Parent = topBar
+
+    local stompCountBox = Instance.new("TextBox")
+    stompCountBox.Text = tostring(stompCount)
+    stompCountBox.Font = Enum.Font.SourceSans
+    stompCountBox.TextSize = 24
+    stompCountBox.Size = UDim2.new(0, 80, 0, 30)
+    stompCountBox.ClearTextOnFocus = false
+    stompCountBox.TextColor3 = Color3.new(1, 1, 1)
+    stompCountBox.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    stompCountBox.Parent = topBar
+    stompCountBox.TextScaled = true
+    stompCountBox.TextWrapped = true
+
+    local plusBtn = Instance.new("TextButton")
+    plusBtn.Text = "+"
+    plusBtn.Font = Enum.Font.SourceSansBold
+    plusBtn.TextSize = 28
+    plusBtn.Size = UDim2.new(0, 40, 0, 30)
+    plusBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    plusBtn.TextColor3 = Color3.new(1, 1, 1)
+    plusBtn.Parent = topBar
+
+    -- Scroll frame for players list
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -10, 1, -55)
+    scroll.Position = UDim2.new(0, 5, 0, 45)
+    scroll.CanvasSize = UDim2.new(0, 0, 2, 0)
+    scroll.ScrollBarThickness = 6
+    scroll.BackgroundTransparency = 1
+    scroll.Parent = frame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Parent = scroll
+
+    -- Refresh player list function
+    local function refreshList()
+        -- Clear current buttons (but keep UIListLayout)
+        for _, child in pairs(scroll:GetChildren()) do
+            if child:IsA("TextButton") or child:IsA("Frame") then
+                child:Destroy()
+            end
+        end
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer then
+                local button = Instance.new("TextButton")
+                button.Size = UDim2.new(1, -10, 0, 40)
+                button.BackgroundColor3 = whitelist[player.Name] and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                button.TextColor3 = Color3.new(1, 1, 1)
+                button.AutoButtonColor = false
+                button.Parent = scroll
+                button.Text = "" -- we'll add children to button instead of text
+
+                -- Player Avatar Image
+                local avatar = Instance.new("ImageLabel")
+                avatar.Size = UDim2.new(0, 36, 0, 36)
+                avatar.Position = UDim2.new(0, 5, 0, 2)
+                avatar.BackgroundTransparency = 1
+                avatar.Parent = button
+                -- Get thumbnail
+                local success, thumbnail = pcall(function()
+                    return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+                end)
+                if success and thumbnail then
+                    avatar.Image = thumbnail
+                else
+                    avatar.Image = "" -- fallback empty
+                end
+
+                -- Text label for displayName and username
+                local label = Instance.new("TextLabel")
+                label.Size = UDim2.new(1, -50, 1, 0)
+                label.Position = UDim2.new(0, 46, 0, 0)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = Color3.new(1,1,1)
+                label.TextXAlignment = Enum.TextXAlignment.Left
+                label.Font = Enum.Font.SourceSansBold
+                label.TextSize = 18
+                label.Text = string.format("%s (%s)", player.DisplayName, player.Name)
+                label.Parent = button
+
+                button.MouseButton1Click:Connect(function()
+                    if whitelist[player.Name] then
+                        whitelist[player.Name] = nil
+                        button.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+                    else
+                        whitelist[player.Name] = true
+                        button.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                    end
+                end)
+            end
+        end
+    end
+
+    refreshList()
+
+    Players.PlayerAdded:Connect(refreshList)
+    Players.PlayerRemoving:Connect(refreshList)
+
+    tool.Equipped:Connect(function()
+        screenGui.Enabled = true
+		notify("whitelist a player by making them green with the tool", 5)
+		notify("increase/decrease the amount of stomps per frame. higher = louder but can also spike your ping if you stay over them for too long", 7)
+    end)
+
+    tool.Unequipped:Connect(function()
+        screenGui.Enabled = false
+    end)
+
+    -- Button clicks for - and +
+    minusBtn.MouseButton1Click:Connect(function()
+        local newVal = tonumber(stompCountBox.Text) or stompCount
+        newVal = math.max(1, newVal - 1) -- minimum 1
+        stompCount = newVal
+        stompCountBox.Text = tostring(stompCount)
+    end)
+
+    plusBtn.MouseButton1Click:Connect(function()
+        local newVal = tonumber(stompCountBox.Text) or stompCount
+        newVal = math.min(100, newVal + 1) -- arbitrary max 100
+        stompCount = newVal
+        stompCountBox.Text = tostring(stompCount)
+    end)
+
+    -- Allow manual typing in the text box but validate on focus lost
+    stompCountBox.FocusLost:Connect(function(enterPressed)
+        local val = tonumber(stompCountBox.Text)
+        if val == nil or val < 1 then
+            stompCountBox.Text = tostring(stompCount)
+        else
+            stompCount = math.clamp(math.floor(val), 1, 100)
+            stompCountBox.Text = tostring(stompCount)
+        end
+    end)
+
+    tool.Parent = localPlayer:WaitForChild("Backpack")
+end
+
+-- Regive tool on spawn
+localPlayer.CharacterAdded:Connect(function()
+    task.wait(2)
+    createWhitelistTool()
+end)
+
+-- Initial give
+createWhitelistTool()
+
+-- Input toggle
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.P then
+        toggled = not toggled
+        if toggled then
+            notify("Stomp ON")
+            connection = RunService.RenderStepped:Connect(function()
+                if isAboveAnotherPlayer() then
+                    for i = 1, stompCount do  -- <-- Use variable stompCount here
+                        remote:FireServer(unpack(args))
+                    end
+                end
+            end)
+        else
+            notify("Stomp OFF")
+            if connection then connection:Disconnect() end
+        end
+    end
+end)
+
+notify("wadadaddddadad on discord", 1)
