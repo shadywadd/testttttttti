@@ -59,8 +59,8 @@ local function run()
         coin.CanCollide = false
         coin.Anchored = true
 
-        if _G.ene and coin.Parent then
-            if not Root.Parent then
+        while _G.ene and coin.Parent do
+            if not Root.Parent then   
                 Character = Player.Character or Player.CharacterAdded:Wait()
                 Root = Character:WaitForChild("HumanoidRootPart")
             end
