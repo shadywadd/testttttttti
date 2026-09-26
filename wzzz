@@ -1,0 +1,128 @@
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+print("Executed")
+
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+
+_G.ene = true
+
+-- Anti-AFK
+local speaker = Players.LocalPlayer
+
+local Services = {
+    VirtualUser = game:GetService("VirtualUser")
+}
+
+local antiAfkCon
+
+if getconnections then
+    for _, c in pairs(getconnections(speaker.Idled)) do
+        pcall(function()
+            c:Disable()
+        end)
+
+        pcall(function()
+            c:Disconnect()
+        end)
+    end
+end
+
+if antiAfkCon then
+    antiAfkCon:Disconnect()
+    antiAfkCon = nil
+end
+
+antiAfkCon = speaker.Idled:Connect(function()
+    Services.VirtualUser:CaptureController()
+    Services.VirtualUser:ClickButton2(Vector2.zero)
+end)
+
+local function run()
+    local Character = Player.Character or Player.CharacterAdded:Wait()
+    local Root = Character:WaitForChild("HumanoidRootPart")
+    local Coins = workspace:WaitForChild("Coins")
+
+    local function collectCoin(coin)
+        if not _G.ene or not coin:IsA("BasePart") then
+            return
+        end
+
+        task.wait(math.random() * 15)
+
+        if not _G.ene or not coin.Parent then
+            return
+        end
+
+        coin.CanCollide = false
+        coin.Anchored = true
+
+        if _G.ene and coin.Parent then
+            if not Root.Parent then
+                Character = Player.Character or Player.CharacterAdded:Wait()
+                Root = Character:WaitForChild("HumanoidRootPart")
+            end
+
+            local rootPos = Root.Position
+
+            coin.CFrame = CFrame.new(
+                rootPos.X,
+                rootPos.Y - (Character:GetExtentsSize().Y / 2),
+                rootPos.Z
+            )
+
+            task.wait(0.1)
+        end
+    end
+
+    for _, coin in ipairs(Coins:GetDescendants()) do
+        task.spawn(collectCoin, coin)
+    end
+
+    Coins.DescendantAdded:Connect(function(coin)
+        task.spawn(collectCoin, coin)
+    end)
+end
+
+-- Watch for workspace.LobbyTeleport.Interaction, whether it already exists
+-- or only shows up later. Place it under the player once when first found,
+-- then keep re-placing it any time its CFrame changes (max once per second).
+local function teleportInteractionUnderPlayer(Interaction)
+    local Character = Player.Character or Player.CharacterAdded:Wait()
+    local Root = Character:WaitForChild("HumanoidRootPart")
+
+    Interaction.CanCollide = false
+    Interaction.Anchored = true
+
+    Interaction.CFrame = CFrame.new(
+        Root.Position.X,
+        Root.Position.Y - (Character:GetExtentsSize().Y / 2),
+        Root.Position.Z
+    )
+end
+
+task.spawn(function()
+    local LobbyTeleport = workspace:WaitForChild("LobbyTeleport")
+    local Interaction = LobbyTeleport:WaitForChild("Interaction")
+
+    -- Do this once, the moment it's detected
+    teleportInteractionUnderPlayer(Interaction)
+
+    -- React to future CFrame changes, skipping any that land within
+    -- 1 second of the last one we acted on
+    local lastFire = 0
+    local cooldown = 1
+
+    Interaction:GetPropertyChangedSignal("CFrame"):Connect(function()
+        local now = os.clock()
+        if now - lastFire < cooldown then
+            return
+        end
+        lastFire = now
+        teleportInteractionUnderPlayer(Interaction)
+    end)
+end)
+
+run()
