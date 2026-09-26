@@ -50,7 +50,7 @@ local function run()
             return
         end
 
-        task.wait(math.random() * 15)
+        task.wait(math.random() * 3)
 
         if not _G.ene or not coin.Parent then
             return
@@ -116,10 +116,13 @@ task.spawn(function()
     local cooldown = 1
 
     Interaction:GetPropertyChangedSignal("CFrame"):Connect(function()
+        task.wait(math.random() * 5)
+
         local now = os.clock()
         if now - lastFire < cooldown then
             return
         end
+
         lastFire = now
         teleportInteractionUnderPlayer(Interaction)
     end)
